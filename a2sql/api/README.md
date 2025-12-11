@@ -1,4 +1,4 @@
-src/api/
+a2sql/api/
 ├── main.py                 # FastAPI 应用入口
 ├── core/                   # 核心模块
 │   ├── constants.py       # 常量配置

@@ -1,8 +1,9 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, Query
-from a2sql.api.model import DatabaseInfo, NL2SQLRequest, NL2SQLResponse
+from a2sql.api.model import DatabaseInfo, NL2SQLRequest, NL2SQLResponse, SQLGenerateRequest, SQLGenerateResponse
 from a2sql.api.services.nl2sql_service import NL2SQLService
 from a2sql.api.core.dependencies import get_config
+from a2sql.core.execution_state import get_execution_state
 from a2sql.utils import setup_logger
 
 logger = setup_logger("api.routes.nl2sql")
@@ -102,3 +103,74 @@ async def get_config_info() -> dict:
         "debug": config.get("debug"),
         "verbose": config.get("verbose"),
     }
+
+
+@router.get("/state/{task_id}", response_model=dict, summary="获取任务执行状态")
+async def get_task_state(task_id: str) -> dict:
+    """
+    获取指定任务的详细执行状态
+    
+    包含每个步骤的输入输出、执行时间、Agent对话历史等
+    
+    Args:
+        task_id: 任务 ID
+        
+    Returns:
+        任务执行状态的完整信息
+    """
+    state = get_execution_state(task_id)
+    
+    if not state:
+        raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
+    
+    return state.to_dict()
+
+
+@router.post("/generate", response_model=SQLGenerateResponse, summary="生成 SQL 语句(不执行)")
+async def generate_sql(request: SQLGenerateRequest) -> SQLGenerateResponse:
+    """
+    只生成 SQL 语句,不执行 SQL
+    
+    复用完整的 NL2SQL 流程 (包括 NL_Analyst, SQL_Generator, SQL_Executor, Refiner),
+    从最终结果中提取生成的 SQL 语句。
+    
+    Args:
+        request: SQL 生成请求
+        
+    Returns:
+        SQL 生成结果,包含生成的 SQL 语句
+    """
+    try:
+        logger.info(f"开始生成 SQL: db_id={request.db_id}, query={request.nl_query[:50]}...")
+        
+        result = NL2SQLService.generate_sql_only(
+            db_id=request.db_id,
+            nl_query=request.nl_query,
+            dataset=request.dataset
+        )
+        
+        logger.info(f"SQL 生成完成: {result.get('sql', '')[:50] if result.get('sql') else 'None'}...")
+        
+        return SQLGenerateResponse(
+            status=result["status"],
+            sql=result.get("sql"),
+            error=result.get("error"),
+            metadata=result.get("metadata")
+        )
+        
+    except Exception as e:
+        import traceback
+        error_detail = f"{type(e).__name__}: {str(e)}"
+        logger.error(f"SQL 生成失败: {error_detail}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        return SQLGenerateResponse(
+            status="failed",
+            sql=None,
+            error=error_detail,
+            metadata={
+                "db_id": request.db_id,
+                "nl_query": request.nl_query,
+                "error_type": type(e).__name__
+            }
+        )

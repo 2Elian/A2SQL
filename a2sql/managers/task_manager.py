@@ -89,32 +89,65 @@ class TaskManager(BaseManager):
         self,
         user_proxy,
         nl_query: str,
-        db_id: str
+        db_id: str,
+        state=None 
     ) -> str:
         """Execute task"""
         logger.info(f"Executing task: db={db_id}, query={nl_query[:50]}...")
         
         try:
             initial_message = PROMPT.format(nl_query=nl_query)
-            logger.info("Initiating agent chat")
+            logger.info("开始 Agent 协作对话")
+            if state:
+                state.start_step(
+                    "agent_conversation",
+                    "execution",
+                    "Agent 协作对话",
+                    {"initial_message": initial_message[:100] + "..."}
+                )
             
             user_proxy.initiate_chat(
                 self.manager,
                 message=initial_message
             )
             
-            logger.info("Agent chat completed")
+            logger.info("Agent 对话完成")
             
             # Extract result from last message
             if self.groupchat and self.groupchat.messages:
+                messages_count = len(self.groupchat.messages)
                 last_message = self.groupchat.messages[-1]
                 result = last_message.get('content', 'Task completed')
-                logger.info(f"Extracted result from {len(self.groupchat.messages)} messages")
+                
+                logger.info(f"从 {messages_count} 条消息中提取结果")
+                
+                # 记录 Agent 对话历史
+                if state:
+                    conversation_history = []
+                    for i, msg in enumerate(self.groupchat.messages):
+                        conversation_history.append({
+                            "index": i,
+                            "sender": msg.get('name', 'unknown'),
+                            "content_preview": msg.get('content', '')[:200] + "...",
+                            "content_length": len(msg.get('content', ''))
+                        })
+                    
+                    state.complete_current_step({
+                        "messages_count": messages_count,
+                        "conversation_history": conversation_history,
+                        "final_result_preview": result[:200] + "..."
+                    })
             else:
                 result = "Task completed"
-                logger.warning("No messages found in groupchat")
+                logger.warning("未找到对话消息")
+                
+                if state:
+                    state.complete_current_step({
+                        "messages_count": 0,
+                        "warning": "未找到对话消息"
+                    })
             
-            logger.info(f"Task result: {str(result)[:100]}...")
+            logger.info(f"任务结果: {str(result)[:100]}...")
             
             return result
             
@@ -122,4 +155,8 @@ class TaskManager(BaseManager):
             logger.error(f"Task execution error: {type(e).__name__}: {str(e)}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            if state:
+                state.fail_current_step(f"{type(e).__name__}: {str(e)}")
+            
             raise

@@ -3,7 +3,7 @@
 from .common import ApiResponse, PaginationParams, PaginatedResponse
 from .database import DatabaseInfo
 from .health import HealthResponse
-from .nl2sql import NL2SQLResponse, NL2SQLRequest
+from .nl2sql import NL2SQLResponse, NL2SQLRequest, SQLGenerateRequest, SQLGenerateResponse
 
 __all__ = [
     # Common
@@ -17,4 +17,6 @@ __all__ = [
     # NL2SQL
     "NL2SQLResponse",
     "NL2SQLRequest",
+    "SQLGenerateRequest",
+    "SQLGenerateResponse",
 ]

@@ -1,13 +1,16 @@
 """
 NL2SQL 系统评估工具
-使用 NL2SQL train.json 数据集评估系统性能
+使用 dev.json 数据集调用 API 评估系统性能
 """
 
 import json
 import sys
 import os
+import requests
+import time
 from typing import List, Dict, Tuple
 from collections import defaultdict
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -15,14 +18,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 class NL2SQLEvaluator:
     """NL2SQL 评估器"""
     
-    def __init__(self, dataset_path: str):
+    def __init__(self, dataset_path: str, api_url: str = "http://localhost:8002/api/v1/nl2sql/generate"):
         """
         初始化评估器
         
         Args:
             dataset_path: 数据集文件路径
+            api_url: API 接口地址
         """
         self.dataset_path = dataset_path
+        self.api_url = api_url
         self.data = []
         self.load_dataset()
     
@@ -173,89 +178,195 @@ class NL2SQLEvaluator:
         
         return exact_match, details
     
+    def call_api(self, db_id: str, question: str, dataset: str = "NL2SQL") -> Dict:
+        """
+        调用 API 生成 SQL
+        
+        Args:
+            db_id: 数据库 ID
+            question: 自然语言查询
+            dataset: 数据集名称
+            
+        Returns:
+            API 响应结果
+        """
+        payload = {
+            "db_id": db_id,
+            "nl_query": question,
+            "dataset": dataset
+        }
+        
+        try:
+            response = requests.post(self.api_url, json=payload, timeout=300)
+            return response.json()
+        except Exception as e:
+            return {
+                "status": "failed",
+                "sql": None,
+                "error": str(e)
+            }
+    
     def run_evaluation(
         self,
-        executor,
-        subset_size: int = 10,
-        verbose: bool = True
+        subset_size: int = None,
+        dataset: str = "NL2SQL",
+        verbose: bool = True,
+        save_errors: bool = True
     ) -> Dict:
         """
         运行评估
         
         Args:
-            executor: NL2SQL执行器
-            subset_size: 评估样本数
+            subset_size: 评估样本数 (None 表示全部)
+            dataset: 数据集名称
             verbose: 是否详细输出
+            save_errors: 是否保存错误案例
             
         Returns:
             评估结果字典
         """
         print("\n" + "=" * 80)
-        print(f"🎯 开始评估 (样本数: {subset_size})")
+        print(f"🎯 开始评估")
+        print("=" * 80)
+        print(f"API 地址: {self.api_url}")
+        print(f"数据集: {dataset}")
+        print(f"样本数: {subset_size if subset_size else '全部'}")
+        print(f"开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 80)
         
-        subset = self.get_evaluation_subset(subset_size)
+        # 确定评估子集
+        if subset_size:
+            subset = self.get_evaluation_subset(subset_size)
+        else:
+            subset = self.data
         
         results = {
             'total': len(subset),
             'exact_match': 0,
-            'partial_match': 0,
             'failed': 0,
-            'details': []
+            'success': 0,
+            'total_time': 0,
+            'details': [],
+            'errors': []
         }
         
+        start_time = time.time()
+        
         for i, item in enumerate(subset, 1):
+            print(f"\n[{i}/{len(subset)}] 评估中...")
+            
             if verbose:
-                print(f"\n[{i}/{len(subset)}] 评估中...")
-                print(f"  问题: {item['question'][:50]}...")
-                print(f"  真实SQL: {item['query'][:60]}...")
+                print(f"  问题ID: {item['question_id']}")
+                print(f"  数据库: {item['db_id']}")
+                print(f"  问题: {item['question']}")
+                print(f"  标准SQL: {item['query'][:80]}...")
+            
+            item_start = time.time()
             
             try:
-                # 这里需要实际调用执行器
-                # result = executor.execute(item['db_id'], item['question'])
-                # predicted_sql = result.data.get('sql', '')
+                # 调用 API
+                response = self.call_api(item['db_id'], item['question'], dataset)
+                item_time = time.time() - item_start
                 
-                # 模拟预测 (实际使用时替换为真实预测)
-                predicted_sql = item['query']  # 临时使用真实SQL模拟
-                
-                exact_match, details = self.evaluate_prediction(
-                    item['query'],
-                    predicted_sql
-                )
-                
-                if exact_match:
-                    results['exact_match'] += 1
-                    if verbose:
-                        print(f"  ✅ 完全匹配")
+                if response['status'] == 'success' and response.get('sql'):
+                    predicted_sql = response['sql']
+                    results['success'] += 1
+                    
+                    # 评估预测结果
+                    exact_match, eval_details = self.evaluate_prediction(
+                        item['query'],
+                        predicted_sql
+                    )
+                    
+                    if exact_match:
+                        results['exact_match'] += 1
+                        if verbose:
+                            print(f"  ✅ 完全匹配 ({item_time:.2f}s)")
+                    else:
+                        if verbose:
+                            print(f"  ⚠️  不匹配 ({item_time:.2f}s)")
+                            print(f"     预测SQL: {predicted_sql[:80]}...")
+                    
+                    results['details'].append({
+                        'question_id': item['question_id'],
+                        'db_id': item['db_id'],
+                        'question': item['question'],
+                        'ground_truth': item['query'],
+                        'prediction': predicted_sql,
+                        'exact_match': exact_match,
+                        'time': item_time,
+                        **eval_details
+                    })
                 else:
-                    results['partial_match'] += 1
+                    # API 调用失败
+                    results['failed'] += 1
+                    error_msg = response.get('error', 'Unknown error')
+                    
                     if verbose:
-                        print(f"  ⚠️  不匹配")
+                        print(f"  ❌ API 失败: {error_msg}")
+                    
+                    error_case = {
+                        'question_id': item['question_id'],
+                        'db_id': item['db_id'],
+                        'question': item['question'],
+                        'ground_truth': item['query'],
+                        'error': error_msg,
+                        'time': item_time
+                    }
+                    results['errors'].append(error_case)
+                    results['details'].append({
+                        **error_case,
+                        'exact_match': False,
+                        'prediction': None
+                    })
                 
-                results['details'].append({
-                    'question_id': item['question_id'],
-                    'question': item['question'],
-                    'ground_truth': item['query'],
-                    'prediction': predicted_sql,
-                    'exact_match': exact_match,
-                    **details
-                })
+                results['total_time'] += item_time
                 
             except Exception as e:
                 results['failed'] += 1
+                item_time = time.time() - item_start
+                results['total_time'] += item_time
+                
                 if verbose:
-                    print(f"  ❌ 失败: {str(e)}")
+                    print(f"  ❌ 异常: {str(e)}")
+                
+                error_case = {
+                    'question_id': item['question_id'],
+                    'db_id': item['db_id'],
+                    'question': item['question'],
+                    'ground_truth': item['query'],
+                    'error': f"{type(e).__name__}: {str(e)}",
+                    'time': item_time
+                }
+                results['errors'].append(error_case)
+                results['details'].append({
+                    **error_case,
+                    'exact_match': False,
+                    'prediction': None
+                })
         
         # 计算指标
-        accuracy = results['exact_match'] / results['total'] * 100
+        total_time = time.time() - start_time
+        accuracy = results['exact_match'] / results['total'] * 100 if results['total'] > 0 else 0
+        avg_time = results['total_time'] / results['total'] if results['total'] > 0 else 0
         
         print("\n" + "=" * 80)
         print("📈 评估结果")
         print("=" * 80)
         print(f"总样本数: {results['total']}")
-        print(f"完全匹配: {results['exact_match']} ({accuracy:.2f}%)")
-        print(f"部分匹配: {results['partial_match']}")
-        print(f"执行失败: {results['failed']}")
+        print(f"成功生成: {results['success']} ({results['success']/results['total']*100:.2f}%)")
+        print(f"完全匹配: {results['exact_match']} (准确率: {accuracy:.2f}%)")
+        print(f"失败数量: {results['failed']}")
+        print(f"总耗时: {total_time:.2f}s")
+        print(f"平均耗时: {avg_time:.2f}s/样本")
+        print("=" * 80)
+        
+        # 保存错误案例
+        if save_errors and results['errors']:
+            error_file = f"evaluation_errors_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(error_file, 'w', encoding='utf-8') as f:
+                json.dump(results['errors'], f, ensure_ascii=False, indent=2)
+            print(f"\n❌ {len(results['errors'])} 个错误案例已保存到: {error_file}")
         
         return results
     
@@ -269,58 +380,43 @@ class NL2SQLEvaluator:
 
 def main():
     """主函数"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='NL2SQL 评估工具')
+    parser.add_argument('--data', default='data/NL2SQL/dev.json', help='数据集路径')
+    parser.add_argument('--api', default='http://localhost:8002/api/v1/nl2sql/generate', help='API 地址')
+    parser.add_argument('--dataset', default='NL2SQL', help='数据集名称')
+    parser.add_argument('--limit', type=int, help='评估样本数限制')
+    parser.add_argument('--output', default='evaluation_results.json', help='结果保存路径')
+    parser.add_argument('--analyze-only', action='store_true', help='仅分析数据集,不评估')
+    parser.add_argument('--quiet', action='store_true', help='简化输出')
+    
+    args = parser.parse_args()
+    
     print("=" * 80)
-    print("NL2SQL 数据集分析与评估工具")
+    print("NL2SQL 评估工具")
     print("=" * 80)
     
-    # 1. 加载和分析数据集
-    dataset_path = "data/NL2SQL/train.json"
-    evaluator = NL2SQLEvaluator(dataset_path)
+    # 加载评估器
+    evaluator = NL2SQLEvaluator(args.data, args.api)
     
-    # 2. 分析数据集
-    evaluator.analyze_dataset()
+    # 分析数据集
+    if args.analyze_only:
+        evaluator.analyze_dataset()
+        return
     
-    # 3. 评估示例 (需要实际的执行器)
-    print("\n" + "=" * 80)
-    print("💡 如何使用此数据集评估系统:")
-    print("=" * 80)
-    print("""
-1. 准备执行器:
-   ```python
-   from src.executors import NL2SQLExecutor
-   executor = NL2SQLExecutor(
-       schema_file="data/CSpider/db_schema.json",
-       llm_config=config.get_llm_config()
-   )
-   ```
-
-2. 运行评估:
-   ```python
-   evaluator = NL2SQLEvaluator("data/NL2SQL/train.json")
-   results = evaluator.run_evaluation(
-       executor=executor,
-       subset_size=100,  # 评估100个样本
-       verbose=True
-   )
-   ```
-
-3. 查看结果:
-   ```python
-   print(f"准确率: {results['exact_match'] / results['total'] * 100:.2f}%")
-   evaluator.save_results(results, "evaluation_results.json")
-   ```
-
-4. 关键评估指标:
-   - Exact Match (EM): 生成的SQL与标准答案完全一致
-   - Execution Accuracy: SQL执行结果正确
-   - Component Match: SQL各组件(SELECT, WHERE等)正确率
-   
-5. 数据集特点:
-   - 中文NL2SQL数据集
-   - 包含真实业务场景查询
-   - 提供结构化SQL表示和查询字符串
-   - 适合评估中文语义理解和SQL生成能力
-    """)
+    # 运行评估
+    results = evaluator.run_evaluation(
+        subset_size=args.limit,
+        dataset=args.dataset,
+        verbose=not args.quiet,
+        save_errors=True
+    )
+    
+    # 保存结果
+    evaluator.save_results(results, args.output)
+    
+    print("\n✅ 评估完成!")
 
 
 if __name__ == "__main__":

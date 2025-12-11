@@ -1,7 +1,3 @@
-"""
-SQL Executor Agent
-SQL 执行器
-"""
 import autogen
 import sqlite3
 from typing import Dict, Any
@@ -31,6 +27,7 @@ class SQLExecutorAgent(BaseAgent):
         # 注册 SQL 执行函数
         @agent.register_for_llm(description="执行 SQL 语句")
         def execute_sql(sql: str) -> str:
+            # TODO 数据一致性如何保证?
             if not self.db_path:
                 raise ValueError(f"数据库{self.db_path}不存在")
             
@@ -38,13 +35,9 @@ class SQLExecutorAgent(BaseAgent):
                 conn = sqlite3.connect(self.db_path)
                 cursor = conn.cursor()
                 cursor.execute(sql)
-                
-                # 获取结果
                 if sql.strip().upper().startswith('SELECT'):
                     results = cursor.fetchall()
                     columns = [description[0] for description in cursor.description]
-                    
-                    # 格式化结果
                     output = f"查询成功! 共 {len(results)} 条记录:\n"
                     output += " | ".join(columns) + "\n"
                     output += "-" * 50 + "\n"

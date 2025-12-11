@@ -1,7 +1,3 @@
-"""
-SQL Generator Agent
-SQL 生成器
-"""
 from typing import Dict, Any
 from a2sql.core.base_agent import BaseAgent
 from a2sql.template.sql_generator import PROMPT

@@ -1,7 +1,3 @@
-"""
-Refiner Agent
-SQL 错误修正专家
-"""
 from typing import Dict, Any
 from a2sql.core.base_agent import BaseAgent
 from a2sql.template.refiner import PROMPT

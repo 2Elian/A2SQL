@@ -1,7 +1,3 @@
-"""
-User Proxy Agent
-用户代理
-"""
 import autogen
 from typing import Dict, Any
 from a2sql.template.user_proxy import PROMPT

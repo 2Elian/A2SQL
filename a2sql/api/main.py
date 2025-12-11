@@ -11,7 +11,7 @@ import sys
 import signal
 import asyncio
 
-# 禁用代理,避免 autogen 请求被代理拦截
+# 重要！禁用代理, 避免 autogen 请求被代理拦截
 os.environ['HTTP_PROXY'] = ''
 os.environ['HTTPS_PROXY'] = ''
 os.environ['http_proxy'] = ''
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     logger.info(f"启动服务: {host}:{port}")
     try:
         uvicorn.run(
-            "src.api.main:app",
+            "a2sql.api.main:app",
             host=host,
             port=port,
             reload=config.get("debug", False),

@@ -94,8 +94,8 @@ curl -X POST "http://localhost:8000/nl2sql" \
 #### 方式三: Python 代码
 
 ```python
-from src.executors import NL2SQLExecutor
-from src.utils import Config
+from a2sql.executors import NL2SQLExecutor
+from a2sql.utils import Config
 
 # 加载配置
 config = Config()
