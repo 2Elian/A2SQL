@@ -42,3 +42,5 @@ test_*.py
 check_*.py
 *_test.py
 *_debug.py
+demo.py
+evaluate.py
