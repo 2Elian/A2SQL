@@ -1,3 +1,5 @@
+import re
+
 
 def extract_sql_from_result(result_data: str) -> str:
     if not result_data:
