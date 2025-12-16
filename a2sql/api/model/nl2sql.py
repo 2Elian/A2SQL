@@ -80,7 +80,6 @@ class SQL2QARequest(BaseModel):
 
 
 class SQL2GenerateRequest(BaseModel):
-    """SQL生成请求 - 数据库配置可选"""
     db_id: str = Field(..., description="数据库 ID")
     nl_query: str = Field(..., description="自然语言查询")
     sql_exe: bool = Field(default=False, description="是否执行SQL验证")

@@ -31,6 +31,7 @@ class NL2SQLService:
     def execute_sql2generate(db_id: str, nl_query: str, sql_exe: bool = False, db_config: dict = None, dataset: str = "CSpider", max_round: int = 20) -> Dict[str, Any]:
         try:
             logger.info(f"SQL2Generate task: dataset={dataset}, db_id={db_id}, sql_exe={sql_exe}, query:{nl_query}")
+            # TODO global_cache how to do?
             from a2sql.executors import SQL2GenerateExecutor
             from a2sql.api.core.dependencies import get_config
             config = get_config()

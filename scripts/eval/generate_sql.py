@@ -8,47 +8,28 @@ import re
 from datetime import datetime
 
 
-def clean_sql(sql: str) -> str:
-    """Clean predicted SQL to NL2SQL format"""
+def normalize_sql_for_eval(sql: str) -> str:
     if not sql:
-        return "SELECT *"
-    
-    # Check if SQL starts with valid keywords
-    sql_upper = sql.strip().upper()
-    valid_keywords = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'WITH']
-    
-    is_valid = False
-    for keyword in valid_keywords:
-        if sql_upper.startswith(keyword):
-            is_valid = True
-            break
-    
-    if not is_valid:
-        return "SELECT *"
-    
-    # Remove FROM Table_xxx or FROM "Table_xxx"
-    sql = re.sub(r'\s+FROM\s+"?Table_[A-Fa-f0-9]+"?', '', sql, flags=re.IGNORECASE)
-    sql = re.sub(r'\s+FROM\s+"?[A-Za-z_][A-Za-z0-9_]*"?', '', sql, flags=re.IGNORECASE)
-    
-    # Remove quotes from column names in SELECT
-    sql = re.sub(r'SELECT\s+"([^"]+)"', r'SELECT \1', sql, flags=re.IGNORECASE)
-    
-    # Remove quotes from column names in WHERE
-    sql = re.sub(r'"([^"]+)"\s*(==|=|>|<|>=|<=|!=)', r'\1 \2', sql)
-    
-    # Unify to ==
-    sql = sql.replace(' = ', ' == ')
-    
-    # Remove semicolon and clean spaces
-    sql = sql.rstrip(';').strip()
-    sql = ' '.join(sql.split())
-    
-    # Final check: if cleaned SQL is empty or too short, return SELECT *
-    if not sql:
-        return "SELECT *"
-    
-    return sql
+        return sql
+    sql = re.sub(
+        r'(?i)\s+FROM\s+\S+',
+        '',
+        sql,
+        count=1
+    )
+    sql = re.sub(
+        r'"([^"]+)"',
+        r'\1',
+        sql
+    )
+    sql = re.sub(
+        r"'([^']*)'",
+        r'"\1"',
+        sql
+    )
+    sql = re.sub(r'\s+', ' ', sql).strip()
 
+    return sql
 
 def generate_predictions(
     dataset_path: str,
@@ -91,7 +72,9 @@ def generate_predictions(
                 json={
                     "db_id": item['db_id'],
                     "nl_query": item['question'],
-                    "dataset": dataset_name
+                    "dataset": dataset_name,
+                    "max_round": 20,
+                    "sql_exe": False,
                 },
                 timeout=300
             )
@@ -99,7 +82,7 @@ def generate_predictions(
             result = response.json()
             
             if result['status'] == 'success' and result.get('sql'):
-                sql = clean_sql(result['sql'])
+                sql = normalize_sql_for_eval(result['sql'])
                 results.append({
                     'qid': item['question_id'],
                     'sql': sql,
@@ -108,7 +91,7 @@ def generate_predictions(
                 if sql == "SELECT *":
                     print(f"  Warning: Invalid SQL, marked as SELECT *")
                 else:
-                    print(f"  Success: {sql[:60]}...")
+                    print(f"  Success: {sql}...")
             else:
                 error = result.get('error', 'Unknown error')
                 print(f"  Failed: {error}")
@@ -126,7 +109,6 @@ def generate_predictions(
                 'db_id': item['db_id']
             })
     
-    # Save to SQL file
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write("qid\tSQL query\tdb_id\n")
         for r in results:
@@ -151,10 +133,10 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='Generate SQL predictions')
-    parser.add_argument('--data', default='data/DuSQL/dev.json', help='Dataset path')
-    parser.add_argument('--api', default='http://localhost:8002/api/v1/nl2sql/nl2sql', help='API URL')
-    parser.add_argument('--output', default='predictions.sql', help='Output SQL file')
-    parser.add_argument('--dataset', default='DuSQL', help='Dataset name')
+    parser.add_argument('--data', default='data/NL2SQL/dev.json', help='Dataset path')
+    parser.add_argument('--api', default='http://localhost:8002/api/v1/nl2sql/sql2generate', help='API URL')
+    parser.add_argument('--output', default=r'G:\Agent\Text-to-SQL\scripts\eval\nl2sql\predictions.sql', help='Output SQL file')
+    parser.add_argument('--dataset', default='NL2SQL', help='Dataset name')
     parser.add_argument('--limit', type=int, help='Limit number of samples')
     
     args = parser.parse_args()
