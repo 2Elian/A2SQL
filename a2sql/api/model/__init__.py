@@ -1,9 +1,7 @@
-"""API 模型模块"""
-
 from .common import ApiResponse, PaginationParams, PaginatedResponse
 from .database import DatabaseInfo
 from .health import HealthResponse
-from .nl2sql import NL2SQLResponse, NL2SQLRequest, SQLGenerateRequest, SQLGenerateResponse
+from .nl2sql import DatabaseConfig, SQL2QARequest, SQL2GenerateRequest, SQL2QAResponse, SQL2GenerateResponse
 
 __all__ = [
     # Common
@@ -15,8 +13,9 @@ __all__ = [
     # Health
     "HealthResponse",
     # NL2SQL
-    "NL2SQLResponse",
-    "NL2SQLRequest",
-    "SQLGenerateRequest",
-    "SQLGenerateResponse",
+    "DatabaseConfig",
+    "SQL2QARequest",
+    "SQL2GenerateRequest",
+    "SQL2QAResponse",
+    "SQL2GenerateResponse"
 ]

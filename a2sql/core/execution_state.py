@@ -1,3 +1,9 @@
+"""
+A2SQL的状态管理器
+author: lizimo
+email: lizimo@nuist.edu.cn
+"""
+
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from enum import Enum
@@ -28,7 +34,7 @@ class ExecutionStep:
         self.error: Optional[str] = None
         self.start_time: Optional[datetime] = None
         self.end_time: Optional[datetime] = None
-        self.duration: Optional[float] = None
+        self.duration: Optional[float] = None # 耗时
         self.agent_name: Optional[str] = None
         self.metadata: Dict[str, Any] = {}
     

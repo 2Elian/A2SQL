@@ -15,5 +15,5 @@ def extract_sql_from_result(result_data: str) -> str:
         if line_stripped.startswith(('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'WITH')):
             sql = '\n'.join(lines[i:]).strip()
             break
-    
+    sql = sql.replace("TERMINATE", "").strip()
     return sql if sql else result_data

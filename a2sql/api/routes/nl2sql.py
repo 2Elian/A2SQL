@@ -1,6 +1,6 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, Query
-from a2sql.api.model import DatabaseInfo, NL2SQLRequest, NL2SQLResponse, SQLGenerateRequest, SQLGenerateResponse
+from a2sql.api.model import DatabaseInfo, SQL2QARequest, SQL2GenerateRequest, SQL2QAResponse, SQL2GenerateResponse
 from a2sql.api.services.nl2sql_service import NL2SQLService
 from a2sql.api.core.dependencies import get_config
 from a2sql.core.execution_state import get_execution_state
@@ -8,20 +8,23 @@ from a2sql.utils import setup_logger
 
 logger = setup_logger("api.routes.nl2sql")
 router = APIRouter(prefix="/nl2sql", tags=["NL2SQL"])
+"""
+Interface Illustrate:
+Interface1: sql2generate
+    if not sql_exe:
+        nl_analyst -> sql_generator -> end
+    else:
+        nl_analyst -> sql_generator -> sql_executor -> refiner -> end
+Interface2: sql2qa
+    if not sql_exe:
+        raise
+    nl_analyst -> sql_generator -> sql_executor -> refiner -> chat_generate -> end
+"""
 
 @router.get("/databases", response_model=List[str], summary="获取数据库列表")
 async def list_databases(
     dataset: str = Query(default="CSpider", description="数据集名称 (CSpider/DuSQL/NL2SQL)")
 ) -> List[str]:
-    """
-    获取指定数据集的数据库列表
-    
-    Args:
-        dataset: 数据集名称
-        
-    Returns:
-        数据库 ID 列表
-    """
     try:
         return NL2SQLService.get_databases(dataset)
     except Exception as e:
@@ -34,16 +37,6 @@ async def get_database_info(
     db_id: str,
     dataset: str = Query(default="CSpider", description="数据集名称 (CSpider/DuSQL/NL2SQL)")
 ) -> DatabaseInfo:
-    """
-    获取指定数据库的详细信息
-    
-    Args:
-        db_id: 数据库 ID
-        dataset: 数据集名称
-        
-    Returns:
-        数据库详细信息
-    """
     try:
         db_info = NL2SQLService.get_database_info(db_id, dataset)
         return DatabaseInfo(**db_info)
@@ -52,43 +45,6 @@ async def get_database_info(
     except Exception as e:
         logger.error(f"获取数据库信息失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/execute", response_model=NL2SQLResponse, summary="执行 NL2SQL 转换")
-async def execute_nl2sql(request: NL2SQLRequest) -> NL2SQLResponse:
-    """
-    执行 NL2SQL 转换任务
-    
-    Args:
-        request: NL2SQL 请求模型
-        
-    Returns:
-        NL2SQL 响应结果
-    """
-    try:
-        logger.info(f"开始执行 NL2SQL: db_id={request.db_id}, query={request.nl_query[:50]}...")
-        
-        result = NL2SQLService.execute_nl2sql(
-            db_id=request.db_id,
-            nl_query=request.nl_query,
-            dataset=request.dataset,
-            max_round=request.max_round
-        )
-        
-        logger.info(f"NL2SQL 执行完成: status={result.status.value}")
-        
-        return NL2SQLResponse(
-            status=result.status.value,
-            data={"result": result.data} if result.is_success() else None,
-            error=result.error,
-            metadata=result.metadata
-        )
-    except Exception as e:
-        import traceback
-        error_detail = f"{type(e).__name__}: {str(e)}"
-        logger.error(f"NL2SQL 执行失败: {error_detail}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=error_detail)
 
 
 @router.get("/config", response_model=dict, summary="获取系统配置")
@@ -107,51 +63,49 @@ async def get_config_info() -> dict:
 
 @router.get("/state/{task_id}", response_model=dict, summary="获取任务执行状态")
 async def get_task_state(task_id: str) -> dict:
-    """
-    获取指定任务的详细执行状态
-    
-    包含每个步骤的输入输出、执行时间、Agent对话历史等
-    
-    Args:
-        task_id: 任务 ID
-        
-    Returns:
-        任务执行状态的完整信息
-    """
     state = get_execution_state(task_id)
-    
     if not state:
         raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
     
     return state.to_dict()
 
-
-@router.post("/generate", response_model=SQLGenerateResponse, summary="生成 SQL 语句(不执行)")
-async def generate_sql(request: SQLGenerateRequest) -> SQLGenerateResponse:
-    """
-    只生成 SQL 语句,不执行 SQL
-    
-    复用完整的 NL2SQL 流程 (包括 NL_Analyst, SQL_Generator, SQL_Executor, Refiner),
-    从最终结果中提取生成的 SQL 语句。
-    
-    Args:
-        request: SQL 生成请求
-        
-    Returns:
-        SQL 生成结果,包含生成的 SQL 语句
-    """
+@router.post("/sql2qa", response_model=SQL2QAResponse, summary="以聊天的方式与数据库进行交互")
+async def execute_nl2sql(request: SQL2QARequest) -> SQL2QAResponse:
     try:
-        logger.info(f"开始生成 SQL: db_id={request.db_id}, query={request.nl_query[:50]}...")
-        
-        result = NL2SQLService.generate_sql_only(
+        result = NL2SQLService.execute_sql2qa(
             db_id=request.db_id,
             nl_query=request.nl_query,
-            dataset=request.dataset
+            db_config=request.db_config.to_dict(),
+            dataset=request.dataset,
+            max_round=request.max_round
         )
         
-        logger.info(f"SQL 生成完成: {result.get('sql', '')[:50] if result.get('sql') else 'None'}...")
-        
-        return SQLGenerateResponse(
+        return SQL2QAResponse(
+            status=result.status.value,
+            data={"result": result.data} if result.is_success() else None,
+            error=result.error,
+            metadata=result.metadata
+        )
+    except Exception as e:
+        import traceback
+        error_detail = f"{type(e).__name__}: {str(e)}"
+        logger.error(f"Execution failed: {error_detail}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=error_detail)
+
+
+@router.post("/sql2generate", response_model=SQL2GenerateResponse, summary="自然语言转换SQL语句接口")
+async def generate_sql(request: SQL2GenerateRequest) -> SQL2GenerateResponse:
+    try:
+        result = NL2SQLService.execute_sql2generate(
+            db_id=request.db_id,
+            nl_query=request.nl_query,
+            sql_exe=request.sql_exe,
+            db_config=request.db_config.to_dict() if request.db_config else None,
+            dataset=request.dataset,
+            max_round=request.max_round
+        )
+        return SQL2GenerateResponse(
             status=result["status"],
             sql=result.get("sql"),
             error=result.get("error"),
@@ -161,10 +115,10 @@ async def generate_sql(request: SQLGenerateRequest) -> SQLGenerateResponse:
     except Exception as e:
         import traceback
         error_detail = f"{type(e).__name__}: {str(e)}"
-        logger.error(f"SQL 生成失败: {error_detail}")
+        logger.error(f"SQL generation failed: {error_detail}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         
-        return SQLGenerateResponse(
+        return SQL2GenerateResponse(
             status="failed",
             sql=None,
             error=error_detail,

@@ -11,7 +11,7 @@ import sys
 import signal
 import asyncio
 
-# 重要！禁用代理, 避免 autogen 请求被代理拦截
+# 禁用代理, 避免 autogen 请求被代理拦截
 os.environ['HTTP_PROXY'] = ''
 os.environ['HTTPS_PROXY'] = ''
 os.environ['http_proxy'] = ''
@@ -30,17 +30,17 @@ logger = setup_logger("api", log_file="logs/api.log")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("🚀 正在启动 NL2SQL API 服务...")
+    logger.info("🚀 Starting the A2SQL API service...")
     init_dependencies()
-    logger.info("✅ NL2SQL API 服务启动成功") 
+    logger.info("✅ A2SQL API service started successfully") 
     yield
-    logger.info("👋 NL2SQL API 服务正在关闭...")
+    logger.info("👋 The A2SQL API service is being shut down...")
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="NL2SQL AutoGen API",
-        description="todo",
+        title="A2SQL API",
+        description="Wecomle to A2SQL(Agent-to-SQL)",
         version="1.0.0",
         lifespan=lifespan,
         docs_url="/docs",
@@ -88,17 +88,17 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    
+    # python -m a2sql.api.main --no-reload
     config = get_config()
     host = config.get("api_host", "0.0.0.0")
     port = int(config.get("api_port", 8001))
     def signal_handler(sig, frame):
-        logger.info(f"收到信号 {sig}，正在关闭服务...")
+        logger.info(f"Signal {sig} received, service is being shut down...")
         sys.exit(0)
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    logger.info(f"启动服务: {host}:{port}")
+    logger.info(f"Start service: {host}:{port}")
     try:
         uvicorn.run(
             "a2sql.api.main:app",
@@ -108,8 +108,8 @@ if __name__ == "__main__":
             log_level="info"
         )
     except KeyboardInterrupt:
-        logger.info("收到 Ctrl+C，服务正在关闭...")
+        logger.info("Received Ctrl+C, service is shutting down...")
     except Exception as e:
-        logger.error(f"服务异常退出: {str(e)}")
+        logger.error(f"Service exited abnormally: {str(e)}")
     finally:
-        logger.info("服务已关闭")
+        logger.info("Service is closed")

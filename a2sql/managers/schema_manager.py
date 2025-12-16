@@ -42,7 +42,6 @@ class SchemaManager(BaseManager):
     
     @log_method_execution_time
     def format_schema_for_prompt(self, db_id: str) -> str:
-        """Format schema for prompt"""
         logger.info(f"Formatting schema for db: {db_id}")
         
         schema = self.get_schema_by_id(db_id)
@@ -80,7 +79,5 @@ class SchemaManager(BaseManager):
             prompt += "\n"
         
         prompt += "约束: 你的所有操作必须基于此 Schema。\n"
-        
-        logger.info(f"Schema formatted: {len(prompt)} chars")
         
         return prompt

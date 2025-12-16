@@ -52,9 +52,10 @@ class Config:
                     "model": self.get("model_name"),
                     "api_key": self.get("openai_api_key"),
                     "base_url": api_base,
+                    "timeout": self.get("llm_timeout", 300),
                 }
             ],
-            "timeout": self.get("llm_timeout", 120), 
+            "timeout": self.get("llm_timeout", 300),
             "cache_seed": None,
         }
         return config

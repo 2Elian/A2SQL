@@ -43,4 +43,5 @@ check_*.py
 *_test.py
 *_debug.py
 demo.py
-evaluate.py
+evaluate_nl2sql.py
+evaluation_results.json

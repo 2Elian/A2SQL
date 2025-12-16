@@ -1,5 +1,4 @@
-"""执行器模块"""
+from .sql2qa_executor import SQL2QaExecutor
+from .sql2generate_executor import SQL2GenerateExecutor
 
-from .nl2sql_executor import NL2SQLExecutor
-
-__all__ = ["NL2SQLExecutor"]
+__all__ = ["SQL2QaExecutor", "SQL2GenerateExecutor"]

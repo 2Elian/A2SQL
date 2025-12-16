@@ -1,28 +1,38 @@
 import logging
 import time
 import functools
+import sys
 from typing import Callable, Any
 
 _logger = None
+_configured_loggers = set()
 
 
 def get_logger(name: str = "nl2sql") -> logging.Logger:
-    """获取全局 logger 实例"""
-    global _logger
-    if _logger is None:
-        _logger = logging.getLogger(name)
-    return _logger
+    global _configured_loggers
+    
+    logger = logging.getLogger(name)
+    if name not in _configured_loggers:
+        logger.setLevel(logging.INFO)
+        
+        # 避免重复添加 handler
+        if not logger.handlers:
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setLevel(logging.INFO)
+            
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
+        
+        _configured_loggers.add(name)
+    
+    return logger
 
 
 def log_execution_time(func: Callable) -> Callable:
-    """
-    装饰器：记录函数执行时间
-    
-    使用方法:
-        @log_execution_time
-        def my_function():
-            pass
-    """
     @functools.wraps(func)
     def wrapper(*args, **kwargs) -> Any:
         logger = get_logger()
@@ -45,15 +55,6 @@ def log_execution_time(func: Callable) -> Callable:
 
 
 def log_method_execution_time(func: Callable) -> Callable:
-    """
-    装饰器：记录类方法执行时间
-    
-    使用方法:
-        class MyClass:
-            @log_method_execution_time
-            def my_method(self):
-                pass
-    """
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs) -> Any:
         logger = get_logger()
